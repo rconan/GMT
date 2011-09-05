@@ -134,9 +134,10 @@ ylabel(colorbar,'WFE [\mum]')
 %%
 % Closed loop integrator gain:
 loopGain = 0.5;
+nIteration = 2000;
+srcorma = sourceorama('../mat/gmtSingleDmLtao.h5',[ngs;lgs(:)],nIteration*tel.samplingTime,tel,0.25);
 %%
 % closing the loop
-nIteration = 2000;
 total  = zeros(1,nIteration);
 residue = zeros(1,nIteration);
 dm.coefs = 0;
@@ -146,21 +147,23 @@ for kIteration=1:nIteration
     % Propagation throught the atmosphere to the telescope, +tel means that
     % all the layers move of one step based on the sampling time and the
     % wind vectors of the layers
-    ngs=ngs.*+tel;
-    lgs = lgs.*tel*dm*wfs;
+    +srcorma;
+%     ngs=ngs.*+tel;
+    tt.resetPhase = ngs.opd*tt.waveNumber;
     % Saving the turbulence aberrated phase
     turbPhase = ngs.meanRmPhase;
     % Variance of the atmospheric wavefront
     total(kIteration) = var(ngs);
     % Propagation to the WFS
     ngs=ngs*dm;
-    % Variance of the residual wavefront
+    lgs = lgs*dm*wfs;
+   % Variance of the residual wavefront
     residue(kIteration) = var(ngs);
     % Computing the DM residual coefficients
     meanRmWfsSlopes = bsxfun(@minus,wfs.slopes,mean(wfs.slopes));
     %     residualDmCoefs = M*meanRmWfsSlopes(:);
     % -.- TT sensing
-    tt = tt.*tel*dm*tipTiltWfs;
+    tt = tt*dm*tipTiltWfs;
     residualDmTtCoefs = commandTipTilt*tipTiltWfs.slopes;
     %     % TT sensing -.-
     %     % Integrating the DM coefficients
@@ -182,7 +185,8 @@ for kIteration=1:nIteration
     title(ax,sprintf('#%4d/%4d',kIteration,nIteration))
     drawnow
 end
-tic
+clear srcorma
+toc
 %%
 % Piston removed phase variance
 u = (0:nIteration-1).*tel.samplingTime;
