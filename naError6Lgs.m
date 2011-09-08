@@ -3,15 +3,18 @@ clear
 addpath('/home/rconan/matlab/GMT/mcode/')
 
 %%
+    
 nPixelPerLenslet = 30;
 wfsNyquistSampling = 0.5;
 tel = giantMagellanTelescope('resolution',50*nPixelPerLenslet,'samplingTime',1/500);
 % tel = telescope(25,'resolution',50*20,'samplingTime',1/500);
+subaps = fitsread('/home/rconan/matlab/GMT/mcode/lgsAberrations/subaps.fits');
 wfs = shackHartmann(50,tel.resolution/2,0.85);
+wfs.validLenslet = logical(subaps);
 wfs.lenslets.nyquistSampling = wfsNyquistSampling;
 wfs.lenslets.fieldStopSize = 30;
 ngs = source.*tel*wfs;
-setValidLenslet(wfs)
+% setValidLenslet(wfs)
 wfs.referenceSlopes = wfs.slopes;
 +wfs
 wfs.camera.frameListener.Enabled = false;
@@ -19,36 +22,14 @@ figure
 slopesDisplay(wfs)
 wfs.slopesListener.Enabled = false;
 
-zernP = zernike(tel,1:22);
-focus = zernike(tel,4);
-% zern = zern\wfs;
 %%
 bif = influenceFunction('monotonic',0.5);
 dm = deformableMirror(wfs.lenslets.nLenslet+1,'modes',bif,'resolution',tel.resolution,'validActuator',wfs.validActuator);
 ngs = ngs.*tel;
 dmWfsCalib = calibration(dm,wfs,ngs,ngs.wavelength*2,100);
  dmWfsCalib.threshold = 2e5;
-% %% Calibration
-% calibDmCommands = speye(dm.nValidActuator)*ngs.wavelength;
-% if dm.nValidActuator>1000
-%     steps           = 25;
-% else
-%     steps = 1;
-% end
-% nC              = floor(dm.nValidActuator/steps);
-% u               = 0;
-% poke               = zeros(wfs.nSlope,dm.nValidActuator);
-% ngs = ngs.*tel*dm*wfs;
-% fprintf(' . actuators range:          ')
-% while u(end)<dm.nValidActuator
-%     u = u(end)+1:min(u(end)+nC,dm.nValidActuator);
-%     fprintf('\b\b\b\b\b\b\b\b\b%4d:%4d',u(1),u(end))
-%     dm.coefs = calibDmCommands(:,u);
-%     +ngs;
-%     poke(:,u) = wfs.slopes/ngs.wavelength;
-% end
-% fprintf('\n--------------------\n')
-%%
+
+%% 
 bifLowRes = influenceFunction('monotonic',0.5);
 dmLowRes = deformableMirror(wfs.lenslets.nLenslet+1,'modes',bifLowRes,'resolution',wfs.lenslets.nLenslet+1,'validActuator',wfs.validActuator);
 F = dmLowRes.modes.modes(dmLowRes.validActuator,:);
@@ -56,6 +37,7 @@ F = dmLowRes.modes.modes(dmLowRes.validActuator,:);
 iP = F*dmWfsCalib.M;
 iP = repmat( {iP} , 1 ,6 );
 iP = blkdiag(iP{:});
+
 %%
 naData = load('naUbc0.mat');
 [nH,nT] = size(naData.naUbc0);
@@ -96,84 +78,6 @@ colorbar
 % nT = 20;
 % naBinnedSubProfile = repmat( naBinnedSubProfile(:,1) , 1, nT);
 
-%% Calibration
-zern = zernike(tel,4);
-zern.c = ngs.wavelength/4;
-ngs = ngs.*zern*wfs;
-focus = focus.\wfs;
-D4 = focus.c*4/ngs.wavelength;
-
-% focus.c = focus.c/D;
-% ngs = ngs.*zern*-focus*wfs;
-% focus = focus.\wfs;
-zernP = zernike(tel,1:27);
-zernP.c = eye(zernP.nMode)*ngs.wavelength/4;
-ngs = ngs.*zernP*wfs;
-zernP = zernP\wfs;
-Dz = zernP.c*4/ngs.wavelength;
-% Dz(1,:) = [];
-  
-lgs = source('height',90e3,'wavelength',photometry.Na); 
-% tel.focalDistance = 90e3;
-lgs = lgs.*tel*wfs;
-zoomResolution = 50;
-deltaHeight = -3e3:zoomResolution:3e3;
-n = length(deltaHeight);
-D = zeros(wfs.nSlope,n);
-for k=1:n
-    lgs = source('height',90e3+deltaHeight(k),'wavelength',photometry.Na); 
-    lgs        = lgs.*tel*wfs;
-    D(:,k)     = wfs.slopes;
-end
-
-figure
-imagesc(D)
-colorbar
-
-% %% Calibration test I
-% lgsHeight = 92.65e3;
-% lgs = source('height',lgsHeight,'wavelength',photometry.Na); 
-% tel.focalDistance = 90e3;
-% lgs = lgs.*tel*wfs;
-% error = bsxfun(@minus,D,wfs.slopes);
-% error = sqrt(sum(error.^2));
-% figure
-% plot(deltaHeight,error)
-% [~,index] = min(error);
-% fprintf('New focal: %gm\n',tel.focalDistance+deltaHeight(index))
-% lgs = source('height',lgsHeight,'wavelength',photometry.Na); 
-% tel.focalDistance = 90e3+deltaHeight(index);
-% lgs = lgs.*tel*wfs;
-% error = bsxfun(@minus,D,wfs.slopes);
-% error = sqrt(sum(error.^2));
-% [~,index] = min(error);
-% fprintf('New focal: %gm\n',tel.focalDistance+deltaHeight(index))
-% 
-% %% Calibration test II
-% lgs = source('height',linspace(85,95,21)*1e3,'wavelength',photometry.Na); 
-% tel.focalDistance = 90e3;
-% lgs = lgs.*tel*wfs;
-% error = bsxfun(@minus,D,wfs.slopes);
-% error = sqrt(sum(error.^2));
-% [~,index] = min(error);
-% figure
-% plot(deltaHeight,error,'.-')
-% fprintf('New focal: %gm\n',tel.focalDistance+deltaHeight(index))
-% 
-% % tel.focalDistance = 90e3;
-% % focus.c = 0; 
-% % for k=1:20
-% %     lgs = lgs.*tel*-focus*wfs;
-% %     focus = focus.\wfs;
-% %     focus.c = focus.c/D;    
-% %     fprintf('Focus #%d: %g\n',k,focus.c*1e6)
-% %     pause
-% % end
-% 
-% % focus.c = focus.c/D;
-% % lgs = lgs.*tel*-focus*wfs;
-% % focus = focus.\wfs;
-% % fprintf('Focus: %g\n',focus.c)
 
 %%
 wfs.camera.frameListener.Enabled = false;
@@ -204,22 +108,16 @@ for kLgs = 1:6
         'height',lgsHeight0,'wavelength',photometry.Na,'viewPoint',[xL(kLgs),yL(kLgs)]);
     set(lgs{kLgs},'objectiveFocalLength',90e3)
     lgsWfs{kLgs} = shackHartmann(50,tel.resolution/2,0.85);
+    lgsWfs{kLgs}.validLenslet = logical(subaps);
     lgsWfs{kLgs}.lenslets.nyquistSampling = wfsNyquistSampling;
     lgsWfs{kLgs}.lenslets.fieldStopSize = 30;
     ngs = source.*tel*lgsWfs{kLgs};
-    setValidLenslet(lgsWfs{kLgs})
     lgsWfs{kLgs}.referenceSlopes = lgsWfs{kLgs}.slopes;
     +lgsWfs{kLgs};
 %     lgs{kLgs} = lgs{kLgs}.*tel*lgsWfs{kLgs};
 %     lgsWfs{kLgs}.referenceSlopes = lgsWfs{kLgs}.slopes + lgsWfs{kLgs}.referenceSlopes;
 end
 % tel.focalDistance = 90e3;
-
-error = bsxfun(@minus,D,wfs.slopes);
-error = sqrt(sum(error.^2));
-[errorMin,index] = min(error);
-% tel.focalDistance = 90e3+deltaHeight(index);
-% fprintf('New focal: %gm\n',tel.focalDistance)
 
 lpfN = 1;
 lpfCount = 0;
@@ -263,7 +161,7 @@ focus.c = 0;
 
 % h = waitbar(0,'patience!');
 for kLgs=1:nLgs
-    for kT=1:1
+    for kT=1:nT
         
 %         if lpfCount==lpfN
 %             
@@ -383,7 +281,7 @@ nSs = length(ss);
 buf = cell2mat( cellfun(@(x) x*wft,ltaoMmse.mmseBuilder,'UniformOutput',false)');
 fprintf('asm rms mean %4.2fnm and std %4.2fnm\n',...
     [mean(std(buf,[],1))*1e9,std(std(buf,[],1))*1e9]')
-asm = nan(dm.nActuator^2*nSs,1);
+asm = zeros(dm.nActuator^2*nSs,1);
 asm(repmat(dm.validActuator(:),nSs,1)) = bsxfun(@minus,buf,mean(buf));
 asm = reshape(asm,[51,51*nSs]);
 figure('Name','Tomographic LGS Aberrations')
@@ -393,4 +291,8 @@ xlabel(colorbar('location','southOutside'),'nm')
 set(gca,'xtickLabel',[],'ytickLabel',[])
 title(sprintf('wavefront rms, @%d": %.2fnm - @%d": %.2fnm - @%d": %.2fnm',[(0:30:60)',std(buf)'*1e9]') )
 
-% save('naErrorClosedLoop6LGSCentralLaunch.mat','slopes')
+save('/home/rconan/matlab/GMT/mcode/mat/naErrorClosedLoop6LgsSideLaunch15x15.mat','slopes')
+%%
+% fits_write('wfsSlopes.fits',slopes(:,:,1)*589e-9/0.5*constants.radian2arcsec/2)
+% fits_write('wfsPhase.fits',maps)
+% fits_write('wfsTomoPhase.fits',asm)
