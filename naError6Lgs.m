@@ -8,13 +8,13 @@ nPixelPerLenslet = 30;
 wfsNyquistSampling = 0.5;
 tel = giantMagellanTelescope('resolution',50*nPixelPerLenslet,'samplingTime',1/500);
 % tel = telescope(25,'resolution',50*20,'samplingTime',1/500);
-subaps = fitsread('/home/rconan/matlab/GMT/mcode/lgsAberrations/subaps.fits');
+% subaps = fitsread('/home/rconan/matlab/GMT/mcode/lgsAberrations/subaps.fits');
 wfs = shackHartmann(50,tel.resolution/2,0.85);
-wfs.validLenslet = logical(subaps);
+% wfs.validLenslet = logical(subaps);
 wfs.lenslets.nyquistSampling = wfsNyquistSampling;
 wfs.lenslets.fieldStopSize = 30;
 ngs = source.*tel*wfs;
-% setValidLenslet(wfs)
+setValidLenslet(wfs)
 wfs.referenceSlopes = wfs.slopes;
 +wfs
 wfs.camera.frameListener.Enabled = false;
@@ -39,7 +39,7 @@ iP = repmat( {iP} , 1 ,6 );
 iP = blkdiag(iP{:});
 
 %%
-naData = load('naUbc0.mat');
+naData = load('/home/rconan/Dropbox/Desktop/Project/TMT/NFIRAOS/alpao/dm88/naUbc0.mat');
 [nH,nT] = size(naData.naUbc0);
 resT = 1;  %[s]
 resH = 24; %[m]
@@ -180,7 +180,15 @@ for kLgs=1:nLgs
 %         end
         
         indInt = kT+lpfN;
-        lgsHeight(:,indInt) = lgsHeight(:,kT) - gain*deltaHeightTrig;
+        lgsHeight(:,indInt) = lg
+        
+        
+        
+        
+        
+        
+        
+        sHeight(:,kT) - gain*deltaHeightTrig;
         naHeight(:,indInt)  = naHeight(:,kT)  + gain*deltaHeightTrig;
         
         hNaMean(kT) = sum(hBin'.*naBinnedSubProfile(:,kT+kT0))/sum(naBinnedSubProfile(:,kT+kT0));
