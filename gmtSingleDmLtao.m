@@ -22,7 +22,7 @@ else
     nLenslet = 50;
     nPx = nLenslet*8;
     tel = telescope(25,...
-        'obstructionRatio',0.4,...
+        'obstructionRato',0.4,...
         'fieldOfViewInArcMin',2.5,...
         'resolution',nPx,...
         'samplingTime',1/500);
@@ -30,32 +30,25 @@ else
 %         'fieldOfViewInArcMin',2.5,...
 %         'resolution',nPx,...
 %         'samplingTime',1/500);
-%     
+%%
+gmtPups = zeros([size(tel.pupil),7]);
+for k=1:7;gmtPups(:,:,k)=tel.segment{k}.pupil;end
+gmtPups = reshape(gmtPups,[],7);
+sumGmtPups = sum(gmtPups)';
+     
     %% Definition of a calibration source
     ngs = source('wavelength',photometry.Na);
     
     %% Definition of the wavefront sensor
     wfs = shackHartmann(nLenslet,nPx,0.85);
-    %%
-    % Propagation of the calibration source to the WFS through the telescope
     ngs = ngs.*tel*wfs;
     wfs.INIT;
     +wfs;
-    %%
-    % The WFS camera display:
     figure
-    subplot(1,2,1)
     imagesc(wfs.camera)
-    %%
-    % The WFS slopes display:
-    subplot(1,2,2)
-    slopesDisplay(wfs)
     
     %% Definition of the deformable mirror
     bif = influenceFunction('monotonic',50/100);
-    % Cut of the influence function
-    % figure
-    % show(bif)
     nActuator = nLenslet + 1;
     dm = deformableMirror(nActuator,...
         'modes',bif,...
@@ -135,7 +128,7 @@ ylabel(colorbar,'WFE [\mum]')
 % Closed loop integrator gain:
 loopGain = 0.5;
 nIteration = 2000;
-srcorma = sourceorama('../mat/gmtSingleDmLtao.h5',[ngs;lgs(:)],nIteration*tel.samplingTime,tel,0.25);
+srcorma = sourceorama('../mat/gmtNonSegSingleDmLtao.h5',[ngs;lgs(:)],nIteration*tel.samplingTime,tel,0.25);
 %%
 % closing the loop
 total  = zeros(1,nIteration);
