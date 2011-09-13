@@ -12,14 +12,20 @@ atm = gmtAtmosphere(1);
 
 %% Definition of the telescope
 nPx = 300;
-tel = telescope(25,...
-    'fieldOfViewInArcMin',2.5,...
-    'resolution',nPx,...
-    'samplingTime',1/500);
-% tel = giantMagellanTelescope(...
+% tel = telescope(25,...
 %     'fieldOfViewInArcMin',2.5,...
 %     'resolution',nPx,...
 %     'samplingTime',1/500);
+tel = giantMagellanTelescope(...
+    'fieldOfViewInArcMin',2.5,...
+    'resolution',nPx,...
+    'samplingTime',1/500);
+
+%%
+gmtPups = zeros([size(tel.pupil),7]);
+for k=1:7;gmtPups(:,:,k)=tel.segment{k}.pupil;end
+gmtPups = reshape(gmtPups,[],7);
+sumGmtPups = sum(gmtPups)';
 
 %% Definition of a calibration source
 ngs = source('wavelength',photometry.Na);
@@ -95,9 +101,9 @@ commandTipTilt = dmTipTiltWfsCalib.M;
 
 %% The closed loop
 % Combining the atmosphere and the telescope
-tel = tel+atm;
-figure
-imagesc(tel)
+% tel = tel+atm;
+% figure
+% imagesc(tel)
 %%
 % Resetting the DM command
 dm.coefs = 0;
@@ -130,9 +136,12 @@ loopGain = 0.5;
 %%
 % closing the loop
 nIteration = 500;
-srcorma = sourceorama('gmtSingleDm2.h5',ngs,nIteration*tel.samplingTime,tel);
+srcorma = sourceorama('gmtSingleDmGmt.h5',ngs,nIteration*tel.samplingTime,tel);
 total  = zeros(1,nIteration);
 residue = zeros(1,nIteration);
+diffPistonCoefs = 0;
+pistonActuator = {tel.pupil,zeros(tel.resolution)};
+zern = zernike(tel,1);
 tic
 for kIteration=1:nIteration
     % Propagation throught the atmosphere to the telescope, +tel means that
@@ -144,11 +153,12 @@ for kIteration=1:nIteration
     tt.resetPhase = ngs.opd*tt.waveNumber;
 %     srcorma.srcs=srcorma.srcs.*tel;
     % Saving the turbulence aberrated phase
-    turbPhase = ngs.meanRmPhase;
+%     ngs = ngs*-(zern.\ngs);
+    turbPhase = ngs.phase;
     % Variance of the atmospheric wavefront
     total(kIteration) = var(ngs);
     % Propagation to the WFS
-    ngs=ngs*dm*wfs; 
+    ngs=ngs*pistonActuator*dm*wfs; 
     % Variance of the residual wavefront
     residue(kIteration) = var(ngs);
     % Computing the DM residual coefficients
@@ -160,6 +170,10 @@ for kIteration=1:nIteration
     % TT sensing -.-
     % Integrating the DM coefficients
     dm.coefs = dm.coefs - loopGain*(residualDmCoefs + residualDmTtCoefs);
+    % piston circus
+    diffPistonCoefs = diffPistonCoefs - loopGain*(gmtPups'*ngs.phase(:))./sumGmtPups;
+    diffPiston = gmtPups*diffPistonCoefs;
+    pistonActuator{2} = reshape(diffPiston,tel.resolution,tel.resolution);
     % Display of turbulence and residual phase
     set(h1,'Cdata',turbPhase*rad2mic)
     set(h2,'Cdata',ngs.meanRmPhase*rad2nm)
