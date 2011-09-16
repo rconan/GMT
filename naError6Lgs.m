@@ -23,7 +23,8 @@ imagesc(wfs.camera)
 
 %%
 bif = influenceFunction('monotonic',0.5);
-dm = deformableMirror(wfs.lenslets.nLenslet+1,'modes',bif,'resolution',tel.resolution,'validActuator',wfs.validActuator);
+dm = deformableMirror(wfs.lenslets.nLenslet+1,'modes',bif,...
+    'resolution',tel.resolution,'validActuator',wfs.validActuator);
 ngs = ngs.*tel;
 dmWfsCalib = calibration(dm,wfs,ngs,ngs.wavelength*8,dm.nValidActuator);
 %  dmWfsCalib.threshold = 2e5;

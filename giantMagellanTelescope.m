@@ -59,7 +59,6 @@ classdef giantMagellanTelescope < telescopeAbstract
                 'samplingTime',p.Results.samplingTime,...
                 'resolution',p.Results.resolution);
             setSegments(obj);
-            obj.log = logBook.checkIn(obj);
             display(obj);
         end
         
@@ -164,10 +163,10 @@ classdef giantMagellanTelescope < telescopeAbstract
 
             function out1 = pupAutoCorr(D,r)
                 
-                index       = r <= D;
-                red         = r(index)./D;
+                m_index       = r <= D;
+                red         = r(m_index)./D;
                 out1        = zeros(size(r));
-                out1(index) = D.*D.*(acos(red)-red.*sqrt((1-red.*red)))./2;
+                out1(m_index) = D.*D.*(acos(red)-red.*sqrt((1-red.*red)))./2;
                 
             end
             
@@ -175,15 +174,15 @@ classdef giantMagellanTelescope < telescopeAbstract
                 
                 out2 = zeros(size(r));
                 
-                index       = r <= abs(R1-R2);
-                out2(index) = pi*min([R1,R2]).^2;
+                m_index       = r <= abs(R1-R2);
+                out2(m_index) = pi*min([R1,R2]).^2;
                 
-                index       = (r > abs(R1-R2)) & (r < (R1+R2));
-                rho         = r(index);
+                m_index       = (r > abs(R1-R2)) & (r < (R1+R2));
+                rho         = r(m_index);
                 red         = (R1*R1-R2*R2+rho.*rho)./(2.*rho)/(R1);
-                out2(index) = out2(index) + R1.*R1.*(acos(red)-red.*sqrt((1-red.*red)));
+                out2(m_index) = out2(m_index) + R1.*R1.*(acos(red)-red.*sqrt((1-red.*red)));
                 red         = (R2*R2-R1*R1+rho.*rho)./(2.*rho)/(R2);
-                out2(index) = out2(index) + R2.*R2.*(acos(red)-red.*sqrt((1-red.*red)));
+                out2(m_index) = out2(m_index) + R2.*R2.*(acos(red)-red.*sqrt((1-red.*red)));
                 
             end
 
@@ -285,7 +284,7 @@ classdef giantMagellanTelescope < telescopeAbstract
                 fo=0;
             end
             x0 = [0,2/obj.D];
-            [out,fval,exitflag] = fzero(@(x) psf(obj,abs(x)./2,fo) - psf(obj,0,fo)./2,x0,optimset('TolX',1e-9));
+            [out,~,exitflag] = fzero(@(x) psf(obj,abs(x)./2,fo) - psf(obj,0,fo)./2,x0,optimset('TolX',1e-9));
             if exitflag<0
                 warning('cougar:telescope:fullWidthHalfMax',...
                     'No interval was found with a sign change, or a NaN or Inf function value was encountered during search for an interval containing a sign change, or a complex function value was encountered during the search for an interval containing a sign change.')

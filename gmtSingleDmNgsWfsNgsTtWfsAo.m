@@ -53,7 +53,7 @@ tipTiltWfs.camera.readOutNoise = 0;
 tipTiltWfs.camera.photonNoise = false;
 tt = tt.*tel*tipTiltWfs;
 figure
-imagesc(tipTiltWfs.camera.frame)
+imagesc(tipTiltWfs.camera)
 
 %% Definition of the deformable mirror
 bif = influenceFunction('monotonic',50/100);
