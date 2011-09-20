@@ -11,7 +11,7 @@ tel = giantMagellanTelescope('resolution',50*nPixelPerLenslet,'samplingTime',1/5
 wfs = shackHartmann(50,pixelPerSubap*50,0.85);
 
 wfs.lenslets.nyquistSampling = 0.5;
-wfs.lenslets.fieldStopSize = nPixelPerLenslet;
+wfs.lenslets.fieldStopSize = nPixelPerLenslet/2;
 
 ngs = source.*tel*wfs;
 
@@ -22,6 +22,32 @@ wfs.referenceSlopes = wfs.slopes;
 +wfs;
 figure
 imagesc(wfs.camera)
+
+%%
+wfs.camera.frameListener.Enabled = true;
+figure
+slopesDisplay(wfs)
+wfs.slopesListener.Enabled = true;
+
+%% Centroid gain estimation
+zern = zernike(tel,2);
+fwhmPerPixel = length(wfs.lenslets.imagelets)/length(wfs.camera.frame);
+pixelSize = skyAngle(fwhmPerPixel*ngs.wavelength*50/tel.D);
+zc = 0:0.1:1;
+c = zeros(size(zc));
+nZc = length(zc);
+a = skyAngle(4*zc*1e-6/tel.D);
+a.ARCSEC
+ngs = ngs.*tel*zern*wfs;
+for kZc = 1:nZc
+    zern.c = zc(kZc)*1e-6;
+    +ngs
+    c(kZc) = pixelSize.ARCSEC*median(wfs.slopes(1:end/2));
+%     gain(kZc) = a.ARCSEC/c;
+end
+figure
+plot(a.ARCSEC,c)
+grid
 %%
 % [x,y] = meshgrid(linspace(-1,1,wfs.lenslets.nLenslet)*tel.R*(wfs.lenslets.nLenslet-1)/wfs.lenslets.nLenslet);
 % lensletsCoord = [x(wfs.validLenslet) y(wfs.validLenslet)];
@@ -32,9 +58,10 @@ imagesc(wfs.camera)
 % bif = influenceFunction('monotonic',0.5);
 % dm = deformableMirror(wfs.lenslets.nLenslet+1,'modes',bif,'resolution',tel.resolution,'validActuator',wfs.validActuator);
 % ngs = ngs.*tel;
-% dmWfsCalib = calibration(dm,wfs,ngs,ngs.wavelength*8,dm.nValidActuator);
+% dmWfsCalib = calibration(dm,wfs,ngs,ngs.wavelength/2,dm.nValidActuator);
 %  dmWfsCalib.threshold = 2e5;
-% % load('../mat/dmData','bif','dm','dmWfsCalib')
+% save('../mat/dmData32x32','bif','dm','dmWfsCalib')
+%%
 wfsId = sprintf('%dx%d',wfs.lenslets.nLensletImagePx,wfs.lenslets.nLensletImagePx);
 dmDataFile = ['../mat/dmData',wfsId];
 fprintf('Loading %s ...',dmDataFile)
@@ -117,24 +144,13 @@ a = 90e3:lgsAltBin:95e3;
 b = -fliplr(-90e3:lgsAltBin:-85e3);
 lgsHeight0 = [b(1:end-1) a];
 
+%%
 nLgs = 6;
-% clear lgs
-% for kLgs = 1:6
-%     lgs{kLgs} = source('zenith',arcsec(35),'azimuth',(kLgs-1)*pi/3,...
-%         'height',lgsHeight0,'wavelength',photometry.Na,'viewPoint',[xL(kLgs),yL(kLgs)]);
-%     set(lgs{kLgs},'objectiveFocalLength',90e3)
-%     lgsWfs{kLgs} = shackHartmann(50,tel.resolution/2,0.85);
-% %     lgsWfs{kLgs}.validLenslet = logical(subaps);
-%     lgsWfs{kLgs}.lenslets.nyquistSampling = wfsNyquistSampling;
-%     lgsWfs{kLgs}.lenslets.fieldStopSize = 30;
-%     ngs = source.*tel*lgsWfs{kLgs};
-%     setValidLenslet(lgsWfs{kLgs})
-%     lgsWfs{kLgs}.referenceSlopes = lgsWfs{kLgs}.slopes;
-%     +lgsWfs{kLgs};
-% %     lgs{kLgs} = lgs{kLgs}.*tel*lgsWfs{kLgs};
-% %     lgsWfs{kLgs}.referenceSlopes = lgsWfs{kLgs}.slopes + lgsWfs{kLgs}.referenceSlopes;
-% end
-% tel.focalDistance = 90e3;
+
+u = (0:wfs.lenslets.nLensletImagePx-1)-(wfs.lenslets.nLensletImagePx)/2;
+[x,y] = meshgrid(u);
+r = hypot(x,y);
+f = exp(-r.^2/(5./(2.*sqrt(2*log(2)))));
 
 lgs = source('asterism',{[6,arcsec(35),0]},...
         'height',lgsHeight0,'wavelength',photometry.Na);
@@ -143,29 +159,26 @@ for kLgs=1:nLgs
         'objectiveFocalLength',90e3,...
         'viewPoint',[xL(kLgs),yL(kLgs)],...
         'nPhoton',285e4/length(lgsHeight0));
+    lgs = lgs.*tel;
 end
-
-[x,y] = meshgrid((0:14)-7);
-r = hypot(x,y);
-f = exp(-r.^2/(5./(2.*sqrt(2*log(2)))));
 set(lgs,'extent',f)
 
 %%
-% imagelets = zeros(wfs.lenslets.nLensletsImagePx, wfs.lenslets.nLensletsImagePx*length(lgsHeight0) , nLgs);
-% for kLgs=1:nLgs
-%      fprintf(' >> LGS #%d/%d\n',kLgs,nLgs)
-%      lgs_k = lgs(1,kLgs,:);
-%      lgs_k = lgs_k.*tel;
-%      propagateThrough(wfs.lenslets,lgs_k(:))
-%      imagelets(:,:,kLgs) = wfs.lenslets.imagelets;
-% end
-imageletsFile = ['../mat/imagelets',launchType,'Launch_50x50lenslets_',wfsId,'pixels_35na_marcos.mat'];
-% fprintf('Saving imagelets to %s ...',imageletsFile)
-% save(imageletsFile,'imagelets')
-% fprintf('\b\b\b!\n')
-fprintf('Loading imagelets to %s ...',imageletsFile)
-load(imageletsFile,'imagelets')
-fprintf('\b\b\b!\n')
+%  imagelets = zeros(wfs.lenslets.nLensletsImagePx, wfs.lenslets.nLensletsImagePx*length(lgsHeight0) , nLgs);
+%  for kLgs=1:nLgs
+%       fprintf(' >> LGS #%d/%d\n',kLgs,nLgs)
+%       lgs_k = lgs(1,kLgs,:);
+%       lgs_k = lgs_k.*tel;
+%       propagateThrough(wfs.lenslets,lgs_k(:))
+%       imagelets(:,:,kLgs) = wfs.lenslets.imagelets;
+%  end
+% imageletsFile = ['../mat/imagelets',launchType,'Launch_50x50lenslets_',wfsId,'pixels_35na_marcos.mat'];
+%  fprintf('Saving imagelets to %s ...',imageletsFile)
+%  save(imageletsFile,'imagelets')
+%  fprintf('\b\b\b!\n')
+%fprintf('Loading imagelets to %s ...',imageletsFile)
+%load(imageletsFile,'imagelets')
+%fprintf('\b\b\b!\n')
 %%
 imagelets = reshape(imagelets,[wfs.lenslets.nLensletsImagePx,wfs.lenslets.nLensletsImagePx,35,6]);
 % telFlux = tel.samplingTime*lgs(1,1,1).nPhoton.*tel.area;
@@ -320,9 +333,9 @@ title(sprintf('wavefront rms, @%d": %.2fnm - @%d": %.2fnm - @%d": %.2fnm',[(0:30
 %%
 %  save('/home/rconan/matlab/GMT/mcode/mat/naErrorClosedLoop6LgsEdgeLaunch4x4_na500-700_marcos.mat','slopes')
 %%
-fitsPath = '~/public_html/share/adaptiveOptics/lgsAberrations/noise/noThreshold/';
+fitsPath = '~/public_html/share/adaptiveOptics/lgsAberrations/noiseless/';
 ccdId = sprintf('%dx%d',wfs.camera.resolution/wfs.lenslets.nLenslet);
 fitsFile = fullfile(fitsPath,[lower(launchType),'LaunchWfsSlopes',ccdId,'.fits']);
-fits_write(fitsFile,slopes(:,:,1)*589e-9/0.5*constants.radian2arcsec*2)
+fits_write(fitsFile,slopes)
 % fits_write('wfsPhase15x15_conv_na580.fits',maps)
 % fits_write('wfsTomoPhase15x15_conv_na580.fits',asm)
