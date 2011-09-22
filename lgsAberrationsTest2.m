@@ -102,36 +102,32 @@ nLgs = 1;
 % imagelets = reshape(imagelets,[wfs.lenslets.nLensletsImagePx,...
 %     wfs.lenslets.nLensletsImagePx,nLgsHeight0]);
 %%
-imageletsFile = ['../mat/keckImageletsDithered',launchType,'Launch_20x20lenslets_',wfsId,'pixels_',sprintf('%d',nLgsHeight0),'na_marcos.mat'];
+wfsId = sprintf('%dx%d',wfs.lenslets.nLensletImagePx,wfs.lenslets.nLensletImagePx);
+imageletsFile = ['../mat/keckImageletsDithered_20x20lenslets_',wfsId,'pixels_',sprintf('%d',nLgsHeight0),'na_marcos.mat'];
 matObj = matfile(imageletsFile);
 if matObj.Properties.Writable % check file existence
     lgs = lgs.*tel;
     zern = zernike(tel,2:3);
     tiltAngle = skyAngle(1,'mas');
     zernCoef = tiltAngle*tel.D/4;
-    matObj.imagelets = zeros(wfs.lenslets.nLensletsImagePx, wfs.lenslets.nLensletsImagePx*nLgsHeight0 , nLgs);
-    matObj.imageletsTip  = zeros(wfs.lenslets.nLensletsImagePx, wfs.lenslets.nLensletsImagePx*nLgsHeight0 , nLgs);
-    matObj.imageletsTilt = zeros(wfs.lenslets.nLensletsImagePx, wfs.lenslets.nLensletsImagePx*nLgsHeight0 , nLgs);
-    for kLgs=1:nLgs
-        fprintf(' >> LGS #%d/%d\n',kLgs,nLgs)
-        lgs_k = lgs(1,kLgs,:);
+%         fprintf(' >> LGS #%d/%d\n',kLgs,nLgs)
+        lgs_k = lgs;
         fprintf('    -> straight!\n')
         lgs_k = lgs_k.*tel;
         propagateThrough(wfs.lenslets,lgs_k(:))
-        matObj.imagelets(:,:,kLgs) = wfs.lenslets.imagelets;
+        matObj.imagelets = wfs.lenslets.imagelets;
         % Tip
         fprintf('    -> tip dithered!\n')
         zern.c = [zernCoef;0];
         lgs_k = lgs_k.*tel*zern;
         propagateThrough(wfs.lenslets,lgs_k(:))
-        matObj.imageletsTip(:,:,kLgs) = wfs.lenslets.imagelets;
+        matObj.imageletsTip = wfs.lenslets.imagelets;
         % Tilt
         fprintf('    -> tilt dithered!\n')
         zern.c = [0;zernCoef];
         lgs_k = lgs_k.*tel*zern;
         propagateThrough(wfs.lenslets,lgs_k(:))
-        matObj.imageletsTilt(:,:,kLgs) = wfs.lenslets.imagelets;
-    end
+        matObj.imageletsTilt = wfs.lenslets.imagelets;
     % imageletsFile = ['../mat/imageletsDithered',launchType,'Launch_50x50lenslets_',wfsId,'pixels_35na_marcos.mat'];
     %  fprintf('Saving imagelets to %s ...',imageletsFile)
     %  save(imageletsFile,'imagelets','imageletsTip','imageletsTilt')
@@ -140,9 +136,9 @@ if matObj.Properties.Writable % check file existence
     %load(imageletsFile,'imagelets')
     %fprintf('\b\b\b!\n')
     %%
-    matObj.imagelets = reshape(matObj.imagelets,[wfs.lenslets.nLensletsImagePx,wfs.lenslets.nLensletsImagePx,nLgsHeight0,6]);
-    matObj.imageletsTip = reshape(matObj.imageletsTip,[wfs.lenslets.nLensletsImagePx,wfs.lenslets.nLensletsImagePx,nLgsHeight0,6]);
-    matObj.imageletsTilt = reshape(matObj.imageletsTilt,[wfs.lenslets.nLensletsImagePx,wfs.lenslets.nLensletsImagePx,nLgsHeight0,6]);
+    matObj.imagelets = reshape(matObj.imagelets,[wfs.lenslets.nLensletsImagePx,wfs.lenslets.nLensletsImagePx,nLgsHeight0]);
+    matObj.imageletsTip = reshape(matObj.imageletsTip,[wfs.lenslets.nLensletsImagePx,wfs.lenslets.nLensletsImagePx,nLgsHeight0]);
+    matObj.imageletsTilt = reshape(matObj.imageletsTilt,[wfs.lenslets.nLensletsImagePx,wfs.lenslets.nLensletsImagePx,nLgsHeight0]);
     % telFlux = tel.samplingTime*lgs(1,1,1).nPhoton.*tel.area;
     % imagelets = imagelets./nLgsHeight0;
 end
@@ -153,33 +149,33 @@ nT = nTrange;
 slopes = zeros(wfs.nSlope,length(nT));
 
 imagelets = matObj.imagelets;
-parfor kT =1:lenght(nT)
+parfor kT =1:length(nT)
     slopes(:,kT) = computeLgsSlopes(wfs,lgs,hBin,naBinnedSubProfile,lgsHeight0,imagelets,nT(kT));
 end
 fitsPath = '~/public_html/share/adaptiveOptics/lgsAberrations/noiseless/dither';
 ccdId = sprintf('%dx%d',wfs.camera.resolution/wfs.lenslets.nLenslet);
 naId  = sprintf('Na%d-%d',nT(1),nT(end));
-fitsFile = fullfile(fitsPath,['keckLike_',lower(launchType),'LaunchWfsSlopes',ccdId,naId,'.fits']);
+fitsFile = fullfile(fitsPath,['keckLike_WfsSlopes',ccdId,naId,'.fits']);
 fits_write(fitsFile,slopes)
 
 imagelets = matObj.imageletsTip;
-parfor kT =1:lenght(nT)
+parfor kT =1:length(nT)
     slopes(:,kT) = computeLgsSlopes(wfs,lgs,hBin,naBinnedSubProfile,lgsHeight0,imagelets,nT(kT));
 end
 fitsPath = '~/public_html/share/adaptiveOptics/lgsAberrations/noiseless/dither';
 ccdId = sprintf('%dx%d',wfs.camera.resolution/wfs.lenslets.nLenslet);
 naId  = sprintf('Na%d-%d',nT(1),nT(end));
-fitsFile = fullfile(fitsPath,['keckLike_',lower(launchType),'LaunchWfsSlopes',ccdId,naId,'TipDither.fits']);
+fitsFile = fullfile(fitsPath,['keckLike_WfsSlopes',ccdId,naId,'TipDither.fits']);
 fits_write(fitsFile,slopes)
 
 imagelets = matObj.imageletsTilt;
-parfor kT =1:lenght(nT)
+parfor kT =1:length(nT)
     slopes(:,kT) = computeLgsSlopes(wfs,lgs,hBin,naBinnedSubProfile,lgsHeight0,imagelets,nT(kT));
 end
 fitsPath = '~/public_html/share/adaptiveOptics/lgsAberrations/noiseless/dither';
 ccdId = sprintf('%dx%d',wfs.camera.resolution/wfs.lenslets.nLenslet);
 naId  = sprintf('Na%d-%d',nT(1),nT(end));
-fitsFile = fullfile(fitsPath,['keckLike_',lower(launchType),'LaunchWfsSlopes',ccdId,naId,'TiltDither.fits']);
+fitsFile = fullfile(fitsPath,['keckLike_WfsSlopes',ccdId,naId,'TiltDither.fits']);
 fits_write(fitsFile,slopes)
 
 end
