@@ -1,6 +1,5 @@
-close all
-clear
-addpath('/home/rconan/matlab/GMT/mcode/gmt')
+function naError6LgsFastWithDitherFun(nTrange)
+
 
 %%
 pixelPerSubap = 15;
@@ -210,51 +209,12 @@ end
 %%
 % lgs = lgs.*tel;
 
-lpfN = 1;
-lpfCount = 0;
-lpfSlopes = zeros(wfs.nSlope,1);
-
-slopes = zeros(wfs.nSlope,nLgs,nT);
-a4 = zeros(1,nT);
-hNaMean = zeros(1,nT);
-naBinnedSubProfile = naBinnedSubProfile./max(naBinnedSubProfile(:));
-lgsHeight = lgsHeight0'*ones(1,nT+lpfN);
-naHeight  = lgsHeight0'*ones(1,nT+lpfN);
-deltaHeightTrig = 0;
-
-figure(101)
-naProfile = ones(size(lgsHeight0));
-subplot(2,2,3)
-h1 = plot(lgsHeight0*1e-3,naProfile,'r.-');
-ax1 = get(h1,'Parent');
-h1a = line(ones(1,2)*90,get(ax1,'ylim'),'color','k','Parent',ax1);
-h1b = line(ones(1,2)*90,get(ax1,'ylim'),'color','m','Parent',ax1);
-grid
-xlabel('Height [km]')
-ylabel('Na Profile')
-subplot(2,2,2)
-h2 = plot(0,0,'.-');
-grid
-ax2 = get(h2,'Parent');
-xlabel('Time [s]')
-ylabel('Focus [nm]')
-subplot(2,2,1)
-h3 = plot(0,90,'.-');
-grid
-ax3 = get(h3,'Parent');
-xlabel('Time [s]')
-ylabel('Mean Na height [km]')
-drawnow
-
-kT0 = 0;%770;
-gain = 0.0;
-focus.c = 0;
 
 naProfile3D = zeros(1,1,length(lgsHeight0));
 
 %%
 wfs.lenslets.nArray = 6;
-nT = 1:1000;
+nT = nTrange;
 slopes = zeros(wfs.nSlope,nLgs,length(nT));
 
 % wfs.camera.photonNoise  = true;
