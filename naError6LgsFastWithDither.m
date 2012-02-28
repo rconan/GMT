@@ -7,18 +7,18 @@ matPath = '/priv/meggs2/rconan/mat';
 pixelPerSubap = 10;
 nPixelPerLenslet = ceil(30/pixelPerSubap)*pixelPerSubap;
 
-tel = giantMagellanTelescope('resolution',50*nPixelPerLenslet,'samplingTime',1/500);
+tel = giantMagellanTelescope('resolution',40*nPixelPerLenslet,'samplingTime',1/500);
 
-wfs = shackHartmann(50,pixelPerSubap*50,0.85);
+wfs = shackHartmann(40,pixelPerSubap*40,0.85);
 
-wfs.lenslets.nyquistSampling = 0.5;
-wfs.lenslets.fieldStopSize = nPixelPerLenslet/2;
+% wfs.lenslets.nyquistSampling = 0.5;
+% wfs.lenslets.fieldStopSize = nPixelPerLenslet/2;
 
 ngs = source.*tel*wfs;
 
-subaps = fitsread('/home/rconan/matlab/GMT/mcode/lgsAberrations/subaps.fits');
-wfs.validLenslet = logical(subaps);
-wfs.referenceSlopes = wfs.slopes;
+% subaps = fitsread('/home/rconan/matlab/GMT/mcode/lgsAberrations/subaps.fits');
+% wfs.validLenslet = logical(subaps);
+% wfs.referenceSlopes = wfs.slopes;
 
 +wfs;
 figure
