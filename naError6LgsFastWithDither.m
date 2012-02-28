@@ -1,23 +1,24 @@
 close all
 clear
+if matlabpool('size')==0;matlabpool(10);end
 addpath('/home/rconan/matlab/GMT/mcode/gmt')
-
+matPath = '/priv/meggs2/rconan/mat';
 %%
-pixelPerSubap = 15;
+pixelPerSubap = 10;
 nPixelPerLenslet = ceil(30/pixelPerSubap)*pixelPerSubap;
 
-tel = giantMagellanTelescope('resolution',50*nPixelPerLenslet,'samplingTime',1/500);
+tel = giantMagellanTelescope('resolution',40*nPixelPerLenslet,'samplingTime',1/500);
 
-wfs = shackHartmann(50,pixelPerSubap*50,0.85);
+wfs = shackHartmann(40,pixelPerSubap*40,0.85);
 
-wfs.lenslets.nyquistSampling = 0.5;
-wfs.lenslets.fieldStopSize = nPixelPerLenslet/2;
+% wfs.lenslets.nyquistSampling = 0.5;
+% wfs.lenslets.fieldStopSize = nPixelPerLenslet/2;
 
 ngs = source.*tel*wfs;
 
-subaps = fitsread('/home/rconan/matlab/GMT/mcode/lgsAberrations/subaps.fits');
-wfs.validLenslet = logical(subaps);
-wfs.referenceSlopes = wfs.slopes;
+% subaps = fitsread('/home/rconan/matlab/GMT/mcode/lgsAberrations/subaps.fits');
+% wfs.validLenslet = logical(subaps);
+% wfs.referenceSlopes = wfs.slopes;
 
 +wfs;
 figure
@@ -77,7 +78,7 @@ wfsId = sprintf('%dx%d',wfs.lenslets.nLensletImagePx,wfs.lenslets.nLensletImageP
 % iP = blkdiag(iP{:});
 
 %%
-naData = load('../mat/naUbc0.mat');
+naData = load(fullfile(matPath,'naUbc0.mat'));
 [nH,nT] = size(naData.naUbc0);
 resT = 1;  %[s]
 resH = 24; %[m]
@@ -160,15 +161,15 @@ for kLgs=1:nLgs
         'viewPoint',[xL(kLgs),yL(kLgs)],...
         'nPhoton',285e4/length(lgsHeight0));
 end
-set(lgs,'extent',f)
+set(lgs,'extent',f,'magnitude',10)
 
 %%
-imageletsFile = ['../mat/imageletsDithered',launchType,'Launch_50x50lenslets_',wfsId,'pixels_35na_marcos.mat'];
+imageletsFile = fullfile(matPath,['imageletsDithered',launchType,'Launch_50x50lenslets_',wfsId,'pixels_35na_marcos.mat']);
 matObj = matfile(imageletsFile);
 if matObj.Properties.Writable % check file existence
     lgs = lgs.*tel;
     zern = zernike(tel,2:3);
-    tiltAngle = skyAngle(1,'mas');
+    tiltAngle = skyAngle(1,'arcsec');
     zernCoef = tiltAngle*tel.D/4;
     matObj.imagelets = zeros(wfs.lenslets.nLensletsImagePx, wfs.lenslets.nLensletsImagePx*length(lgsHeight0) , nLgs);
     matObj.imageletsTip  = zeros(wfs.lenslets.nLensletsImagePx, wfs.lenslets.nLensletsImagePx*length(lgsHeight0) , nLgs);
@@ -257,8 +258,10 @@ wfs.lenslets.nArray = 6;
 nT = 1:1000;
 slopes = zeros(wfs.nSlope,nLgs,length(nT));
 
-% wfs.camera.photonNoise  = true;
-% wfs.camera.readOutNoise = 2.5;
+wfs.camera.photonNoise  = true;
+wfs.camera.readOutNoise = 1.4;
+wfs.lenslets.throughput = 0.6/0.448;
+wfs.framePixelThreshold = [3*wfs.camera.readOutNoise, 0.1];
 
 imagelets = matObj.imagelets;
 
@@ -282,78 +285,78 @@ for kT=nT
     
 end
 toc(tStart)
-fitsPath = '~/public_html/share/adaptiveOptics/lgsAberrations/noiseless/dither';
+fitsPath = '~/public_html/share/adaptiveOptics/lgsAberrations/noise';
 ccdId = sprintf('%dx%d',wfs.camera.resolution/wfs.lenslets.nLenslet);
 naId  = sprintf('Na%d-%d',nT(1),nT(end));
 fitsFile = fullfile(fitsPath,[lower(launchType),'LaunchWfsSlopes',ccdId,naId,'.fits']);
 fits_write(fitsFile,slopes)
 
-% %%
-% wfs.lenslets.nArray = 6;
+%%
+%wfs.lenslets.nArray = 6;
 % nT = 500:700;
-% slopes = zeros(wfs.nSlope,nLgs,length(nT));
-% 
-% % wfs.camera.photonNoise  = true;
-% % wfs.camera.readOutNoise = 2.5;
-% 
-% imagelets = matObj.imageletsTip;
-% 
-% tStart = tic;
-% for kT=nT
-%     
-%     fprintf(' Profile #%3d\n',kT)
-%     naProfile = interp1(hBin,naBinnedSubProfile(:,kT),lgsHeight0*1e-3);
-%     
-%     
-%     naProfile3D(1,1,:) = naProfile;
-%     wfs.lenslets.imagelets = squeeze( sum( bsxfun( @times , imagelets, naProfile3D ) , 3) );
-%     wfs.lenslets.imagelets = reshape(  wfs.lenslets.imagelets , wfs.lenslets.nLensletsImagePx , [] );
-%     
-%     %         lgs = lgs.*tel*wfs;
-%     spotsSrcKernelConvolution(wfs,lgs)
-%     grab(wfs.camera)
-%     dataProcessing(wfs);
-%     
-%     slopes(:,:,kT-nT(1)+1) = wfs.slopes;
-%     
-% end
-% toc(tStart)
-% fitsPath = '~/public_html/share/adaptiveOptics/lgsAberrations/noiseless/dither';
-% ccdId = sprintf('%dx%d',wfs.camera.resolution/wfs.lenslets.nLenslet);
-% fitsFile = fullfile(fitsPath,[lower(launchType),'LaunchWfsSlopes',ccdId,'TipDither.fits']);
-% fits_write(fitsFile,slopes)
-% 
-% %%
-% wfs.lenslets.nArray = 6;
-% nT = 500:700;
-% slopes = zeros(wfs.nSlope,nLgs,length(nT));
-% 
-% % wfs.camera.photonNoise  = true;
-% % wfs.camera.readOutNoise = 2.5;
-% 
-% imagelets = matObj.imageletsTilt;
-% 
-% tStart = tic;
-% for kT=nT
-%     
-%     fprintf(' Profile #%3d\n',kT)
-%     naProfile = interp1(hBin,naBinnedSubProfile(:,kT),lgsHeight0*1e-3);
-%     
-%     
-%     naProfile3D(1,1,:) = naProfile;
-%     wfs.lenslets.imagelets = squeeze( sum( bsxfun( @times , imagelets, naProfile3D ) , 3) );
-%     wfs.lenslets.imagelets = reshape(  wfs.lenslets.imagelets , wfs.lenslets.nLensletsImagePx , [] );
-%     
-%     %         lgs = lgs.*tel*wfs;
-%     spotsSrcKernelConvolution(wfs,lgs)
-%     grab(wfs.camera)
-%     dataProcessing(wfs);
-%     
-%     slopes(:,:,kT-nT(1)+1) = wfs.slopes;
-%     
-% end
-% toc(tStart)
-% fitsPath = '~/public_html/share/adaptiveOptics/lgsAberrations/noiseless/dither';
-% ccdId = sprintf('%dx%d',wfs.camera.resolution/wfs.lenslets.nLenslet);
-% fitsFile = fullfile(fitsPath,[lower(launchType),'LaunchWfsSlopes',ccdId,'TiltDither.fits']);
-% fits_write(fitsFile,slopes)
+%slopes = zeros(wfs.nSlope,nLgs,length(nT));
+
+% wfs.camera.photonNoise  = true;
+% wfs.camera.readOutNoise = 2.5;
+
+%imagelets = matObj.imageletsTip;
+
+%tStart = tic;
+%for kT=nT
+%    
+%    fprintf(' Profile #%3d\n',kT)
+%    naProfile = interp1(hBin,naBinnedSubProfile(:,kT),lgsHeight0*1e-3);
+%    
+%    
+%    naProfile3D(1,1,:) = naProfile;
+%    wfs.lenslets.imagelets = squeeze( sum( bsxfun( @times , imagelets, naProfile3D ) , 3) );
+%    wfs.lenslets.imagelets = reshape(  wfs.lenslets.imagelets , wfs.lenslets.nLensletsImagePx , [] );
+%    
+%    %         lgs = lgs.*tel*wfs;
+%    spotsSrcKernelConvolution(wfs,lgs)
+%    grab(wfs.camera)
+%    dataProcessing(wfs);
+%    
+%    slopes(:,:,kT-nT(1)+1) = wfs.slopes;
+%    
+%end
+%toc(tStart)
+%fitsPath = '~/public_html/share/adaptiveOptics/lgsAberrations/noiseless/dither';
+%ccdId = sprintf('%dx%d',wfs.camera.resolution/wfs.lenslets.nLenslet);
+%RfitsFile = fullfile(fitsPath,[lower(launchType),'LaunchWfsSlopes',ccdId,'TipDither.fits']);
+%fits_write(fitsFile,slopes)
+
+%%
+%wfs.lenslets.nArray = 6;
+%% nT = 500:700;
+%slopes = zeros(wfs.nSlope,nLgs,length(nT));
+%
+%% wfs.camera.photonNoise  = true;
+%% wfs.camera.readOutNoise = 2.5;
+%
+%imagelets = matObj.imageletsTilt;
+%
+%tStart = tic;
+%for kT=nT
+%    
+%    fprintf(' Profile #%3d\n',kT)
+%    naProfile = interp1(hBin,naBinnedSubProfile(:,kT),lgsHeight0*1e-3);
+%    
+%    
+%    naProfile3D(1,1,:) = naProfile;
+%    wfs.lenslets.imagelets = squeeze( sum( bsxfun( @times , imagelets, naProfile3D ) , 3) );
+%    wfs.lenslets.imagelets = reshape(  wfs.lenslets.imagelets , wfs.lenslets.nLensletsImagePx , [] );
+%    
+%    %         lgs = lgs.*tel*wfs;
+%    spotsSrcKernelConvolution(wfs,lgs)
+%    grab(wfs.camera)
+%    dataProcessing(wfs);
+%    
+%    slopes(:,:,kT-nT(1)+1) = wfs.slopes;
+%    
+%end
+%toc(tStart)
+%fitsPath = '~/public_html/share/adaptiveOptics/lgsAberrations/noiseless/dither';
+%ccdId = sprintf('%dx%d',wfs.camera.resolution/wfs.lenslets.nLenslet);
+%fitsFile = fullfile(fitsPath,[lower(launchType),'LaunchWfsSlopes',ccdId,'TiltDither.fits']);
+%%%%fits_write(fitsFile,slopes)

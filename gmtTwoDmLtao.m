@@ -65,7 +65,7 @@ sumGmtPups = sum(gmtPups)';
     
     %% Tip-Tilt Sensor
     % Tip-Tilt source
-    tt = source('wavelength',photometry.K);
+    tt = source('zenith',arcsec(60),'wavelength',photometry.K);
     % GMT Tip-Tilt IR sensor
     tipTiltWfs = gmtInfraredQuadCellDetector(tel,1/tel.samplingTime,40e-3,tt);
     tipTiltWfs.camera.readOutNoise = 0;
@@ -77,7 +77,7 @@ sumGmtPups = sum(gmtPups)';
     dmTipTiltWfsCalib = calibration(dm,tipTiltWfs,tt,tt.wavelength/4);
     dmTipTiltWfsCalib.nThresholded = 0;
     commandTipTilt = dmTipTiltWfsCalib.M;
-    %%
+    %% on-axis tomography
     lgs = source('asterism',{[6,arcsec(35),0]},'wavelength',photometry.Na,'height',90e3);
     ltaoMmse = linearMMSE(dm.nActuator,tel.D,atm,lgs,ngs,'pupil',dm.validActuator,'unit',-9);
     %%
@@ -91,6 +91,10 @@ sumGmtPups = sum(gmtPups)';
     M = ltaoMmse.mmseBuilder{1}*iP;
     iF = pinv(full(F));
     M = iF*M;
+    %% tip-tilt tomography
+    ltaoTtMmse = linearMMSE(dm.nActuator,tel.D,atm,lgs,tt,'pupil',dm.validActuator,'unit',-9);
+    Mtt = ltaoTtMmse.mmseBuilder{1}*iP;
+    Mtt = iF*Mtt;
     
     % Combining the atmosphere and the telescope
     tel = tel+atm;
@@ -111,7 +115,8 @@ dm.coefs = 0;
 %%
 % Propagation throught the atmosphere to the telescope
 ngs=ngs.*tel;
-lgs=lgs.*tel;
+lgs = gpuSource('asterism',{[6,arcsec(35),0]},'wavelength',photometry.Na,'height',90e3);
+lgs=lgs.*tel;+lgs
 tt = tt.*tel;
 %%
 % Saving the turbulence aberrated phase
@@ -130,7 +135,7 @@ ylabel(colorbar,'WFE [\mum]')
 %%
 % Closed loop integrator gain:
 loopGain = 0.5;
-nIteration = 500;
+nIteration = 50;
 srcorma = sourceorama('/priv/monarcas1/rconan/mat/gmtSingleDmLtao.h5',[ngs;lgs(:)],nIteration*tel.samplingTime,tel,0.25);
 %%
 % closing the loop
@@ -138,29 +143,34 @@ total  = zeros(1,nIteration);
 residue = zeros(1,nIteration);
 dm.coefs = 0;
 ux = ones(1,length(lgs));
+asm = dm;
+asmCoefs = 0;
+dmCoefs = 0;
 tic
 for kIteration=1:nIteration
     % Propagation throught the atmosphere to the telescope, +tel means that
     % all the layers move of one step based on the sampling time and the
     % wind vectors of the layers
-    +srcorma;
-%     ngs=ngs.*+tel;
-    tt.resetPhase = ngs.opd*tt.waveNumber;
+%     +srcorma;
+    ngs=ngs.*+tel;
+    tt =tt.*tel;
     % Saving the turbulence aberrated phase
     turbPhase = ngs.meanRmPhase;
     % Variance of the atmospheric wavefront
     total(kIteration) = var(ngs);
     % Propagation to the WFS
-    ngs=ngs*dm;
+    asm.coefs = asmCoefs;
+    ngs=ngs*asm;
     % piston circus
     ngs.phase = -reshape( gmtPups*((gmtPups'*ngs.phase(:))./sumGmtPups) , tel.resolution , tel.resolution );
-    lgs = lgs*dm*wfs;
+    lgs = lgs.*tel*asm*wfs;+lgs
    % Variance of the residual wavefront
     residue(kIteration) = var(ngs);
     % Computing the DM residual coefficients
     meanRmWfsSlopes = bsxfun(@minus,wfs.slopes,mean(wfs.slopes));
     %     residualDmCoefs = M*meanRmWfsSlopes(:);
     % -.- TT sensing
+    dm.coefs = dmCoefs;
     tt = tt*dm*tipTiltWfs;
     residualDmTtCoefs = commandTipTilt*tipTiltWfs.slopes;
     %     % TT sensing -.-
@@ -168,19 +178,25 @@ for kIteration=1:nIteration
     %     dm.coefs = dm.coefs - loopGain*(residualDmCoefs + residualDmTtCoefs);
     
     % DM slopes
-    S_DM = dmWfsCalib.D*dm.coefs;
+    S_DM = dmWfsCalib.D*asm.coefs;
     % LGS full turbulence slopes estimate
     S_LGS = meanRmWfsSlopes-S_DM*ux;
     % on-axis full turbulence DM command tomography estimate
     C_NGS = M*S_LGS(:);
+    % tip-tilt GS full turbulence DM command tomography estimate
+    CTT_NGS = Mtt*S_LGS(:);
     % on-axis residual turbulence DM command estimate
-    C_res_NGS = C_NGS + dm.coefs;
+    C_res_NGS = C_NGS + asmCoefs;
+    % tip-tilt GS residual turbulence DM command estimate
+    CTT_res_NGS = CTT_NGS + dmCoefs;
     % integrator or (may be) low-pass filter (to check)
-    dm.coefs = dm.coefs - loopGain*(C_res_NGS+residualDmTtCoefs);
+    asmCoefs = asmCoefs - loopGain*(C_res_NGS+residualDmTtCoefs);
+    dmCoefs = dmCoefs - loopGain*(CTT_res_NGS+residualDmTtCoefs);
 
     % Display of turbulence and residual phase
     set(h,'Cdata',[turbPhase,ngs.meanRmPhase]*rad2mic)
     title(ax,sprintf('#%4d/%4d',kIteration,nIteration))
+    imagesc(tipTiltWfs.lenslets)
     drawnow
 end
 clear srcorma
@@ -194,7 +210,7 @@ atm.wavelength = photometry.V;
 %%
 % Phase variance to micron rms converter
 rmsMicron = @(x) 1e6*sqrt(x).*ngs.wavelength/2/pi;
-figure(12)
+figure
 plot(u,rmsMicron(total),u([1,end]),rmsMicron(totalTheory)*ones(1,2),u,rmsMicron(residue))
 grid
 legend('Full','Full (theory)','Residue',0)

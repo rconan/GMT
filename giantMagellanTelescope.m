@@ -9,7 +9,7 @@ classdef giantMagellanTelescope < telescopeAbstract
         % secondary mirror diameter
         centralObscurationD = 3.2;
         % center hole diameter 
-        centerHoleD = 0;%0.55;
+        centerHoleD = 1e-6;%0.55;
     end
     
     properties
@@ -142,8 +142,13 @@ classdef giantMagellanTelescope < telescopeAbstract
                 r = zRho - obj.segmentCoordinate(k1);
                 out = out + 2*diffPupCrossCorr(obj.segmentD,obj.centralObscurationD,obj.centerHoleD,abs(r));
                 for k2 = 2:obj.nSegment
-                     r = zRho - obj.segmentCoordinate(k1) - obj.segmentCoordinate(k2);
-                     out = out + diffPupAutoCorr(obj.segmentD,obj.centerHoleD,abs(r));
+                    r = zRho - obj.segmentCoordinate(k1) - obj.segmentCoordinate(k2);
+                    r = abs(r);
+                    %                      out = out + diffPupAutoCorr(obj.segmentD,obj.centerHoleD,abs(r));
+                    out = out + ...
+                        pupAutoCorr(obj.segmentD,r).*exp(1i*(obj.segment{k1}.c-obj.segment{k2}.c)) + ...
+                        pupAutoCorr(obj.centerHoleD,r) - ...
+                        2*pupCrossCorr(obj.segmentD/2,obj.centerHoleD/2,r);
                 end
             end
             
@@ -163,26 +168,25 @@ classdef giantMagellanTelescope < telescopeAbstract
 
             function out1 = pupAutoCorr(D,r)
                 
-                m_index       = r <= D;
-                red         = r(m_index)./D;
+                f_index       = r <= D;
+                red         = r(f_index)./D;
                 out1        = zeros(size(r));
-                out1(m_index) = D.*D.*(acos(red)-red.*sqrt((1-red.*red)))./2;
+                out1(f_index) = D.*D.*(acos(red)-red.*sqrt((1-red.*red)))./2;
                 
             end
             
             function out2 = pupCrossCorr(R1,R2,r)
                 
                 out2 = zeros(size(r));
+                f_index       = r <= abs(R1-R2);
+                out2(f_index) = pi*min([R1,R2]).^2;
                 
-                m_index       = r <= abs(R1-R2);
-                out2(m_index) = pi*min([R1,R2]).^2;
-                
-                m_index       = (r > abs(R1-R2)) & (r < (R1+R2));
-                rho         = r(m_index);
+                f_index       = (r > abs(R1-R2)) & (r < (R1+R2));
+                rho         = r(f_index);
                 red         = (R1*R1-R2*R2+rho.*rho)./(2.*rho)/(R1);
-                out2(m_index) = out2(m_index) + R1.*R1.*(acos(red)-red.*sqrt((1-red.*red)));
+                out2(f_index) = out2(f_index) + R1.*R1.*(acos(red)-red.*sqrt((1-red.*red)));
                 red         = (R2*R2-R1*R1+rho.*rho)./(2.*rho)/(R2);
-                out2(m_index) = out2(m_index) + R2.*R2.*(acos(red)-red.*sqrt((1-red.*red)));
+                out2(f_index) = out2(f_index) + R2.*R2.*(acos(red)-red.*sqrt((1-red.*red)));
                 
             end
 

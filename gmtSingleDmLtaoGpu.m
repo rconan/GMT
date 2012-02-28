@@ -2,8 +2,9 @@
 % Demonstrate how to build the GMT LTAO system
 
 forceSettings = false;
+pistonFilter  = true;
 matPath = '/priv/monarcas1/rconan/mat/';
-filename  = fullfile(matPath,'gmtSingleDmLtaoSettings.mat');
+filename  = fullfile(matPath,'gmtSingleDmLtaoGpuSettings1.mat');
 if exist(filename,'file') && ~forceSettings
     
     fprintf('   >>> LOAD SETTINGS FROM %s ....',upper(filename))
@@ -21,9 +22,9 @@ else
     
     %% Definition of the telescope
     nLenslet = 50;
-    nPx = nLenslet*8;
-%     tel = telescope(25,...
-%         'obstructionRato',0.4,...
+    nPx = nLenslet*80;
+%     tel = telescope(5,...
+%         'obstructionRatio',0.4,...
 %         'fieldOfViewInArcMin',2.5,...
 %         'resolution',nPx,...
 %         'samplingTime',1/500);
@@ -32,17 +33,20 @@ else
         'resolution',nPx,...
         'samplingTime',1/500);
 %%
-gmtPups = zeros([size(tel.pupil),7]);
-for k=1:7;gmtPups(:,:,k)=tel.segment{k}.pupil;end
-gmtPups = reshape(gmtPups,[],7);
-sumGmtPups = sum(gmtPups)';
-     
-    %% Definition of a calibration source
+if pistonFilter
+    gmtPups = zeros([size(tel.pupil),7]);
+    for k=1:7;gmtPups(:,:,k)=tel.segment{k}.pupil;end
+    gmtPups = reshape(gmtPups,[],7);
+    sumGmtPups = sum(gmtPups)';
+end
+%% Definition of a calibration source
     ngs = source('wavelength',photometry.Na);
+    lgs = source('height',90e3,'wavelength',photometry.Na);
     
     %% Definition of the wavefront sensor
-    wfs = shackHartmann(nLenslet,nPx,0.85);
-    ngs = ngs.*tel*wfs;
+    nPxDetectorLenslet = 10;
+    wfs = shackHartmann(nLenslet,nLenslet*nPxDetectorLenslet,0.85);
+    lgs = lgs.*tel*wfs;
     wfs.INIT;
     +wfs;
     figure
@@ -58,9 +62,9 @@ sumGmtPups = sum(gmtPups)';
     
     
     %% Interaction matrix: DM/WFS calibration
-    ngs = ngs.*tel;
-    dmWfsCalib = calibration(dm,wfs,ngs,ngs.wavelength/2);
-    dmWfsCalib.threshold = 4e5;
+    lgs = lgs.*tel;
+    dmWfsCalib = calibration(dm,wfs,lgs,lgs.wavelength/2,round(dm.nValidActuator/50));
+    dmWfsCalib.threshold = 3e4;
     commandMatrix = dmWfsCalib.M;
     
     %% Tip-Tilt Sensor
@@ -110,8 +114,9 @@ end
 dm.coefs = 0;
 %%
 % Propagation throught the atmosphere to the telescope
+lgs = gpuSource('asterism',{[6,arcsec(35),0]},'wavelength',photometry.Na,'height',90e3);
 ngs=ngs.*tel;
-lgs=lgs.*tel;
+lgs=lgs.*tel;+lgs;
 tt = tt.*tel;
 %%
 % Saving the turbulence aberrated phase
@@ -130,8 +135,8 @@ ylabel(colorbar,'WFE [\mum]')
 %%
 % Closed loop integrator gain:
 loopGain = 0.5;
-nIteration = 500;
-srcorma = sourceorama('/priv/monarcas1/rconan/mat/gmtSingleDmLtao.h5',[ngs;lgs(:)],nIteration*tel.samplingTime,tel,0.25);
+nIteration = 50;
+% srcorma = sourceorama('/priv/monarcas1/rconan/mat/gmtSingleDmLtaoGpu1.h5',[ngs;lgs(:)],nIteration*tel.samplingTime,tel,tel.samplingTime*10);
 %%
 % closing the loop
 total  = zeros(1,nIteration);
@@ -143,8 +148,8 @@ for kIteration=1:nIteration
     % Propagation throught the atmosphere to the telescope, +tel means that
     % all the layers move of one step based on the sampling time and the
     % wind vectors of the layers
-    +srcorma;
-%     ngs=ngs.*+tel;
+%     +srcorma;
+    ngs=ngs.*tel;
     tt.resetPhase = ngs.opd*tt.waveNumber;
     % Saving the turbulence aberrated phase
     turbPhase = ngs.meanRmPhase;
@@ -153,8 +158,12 @@ for kIteration=1:nIteration
     % Propagation to the WFS
     ngs=ngs*dm;
     % piston circus
-    ngs.phase = -reshape( gmtPups*((gmtPups'*ngs.phase(:))./sumGmtPups) , tel.resolution , tel.resolution );
-    lgs = lgs*dm*wfs;
+    if pistonFilter 
+        ngs.phase = -reshape( gmtPups*((gmtPups'*ngs.phase(:))./sumGmtPups) , tel.resolution , tel.resolution );
+    end
+    lgs = lgs.*tel*dm*wfs;
+    +lgs;
+%     +lgs
    % Variance of the residual wavefront
     residue(kIteration) = var(ngs);
     % Computing the DM residual coefficients
@@ -183,7 +192,7 @@ for kIteration=1:nIteration
     title(ax,sprintf('#%4d/%4d',kIteration,nIteration))
     drawnow
 end
-clear srcorma
+% clear srcorma
 toc
 %%
 % Piston removed phase variance
@@ -194,7 +203,7 @@ atm.wavelength = photometry.V;
 %%
 % Phase variance to micron rms converter
 rmsMicron = @(x) 1e6*sqrt(x).*ngs.wavelength/2/pi;
-figure(12)
+figure(14)
 plot(u,rmsMicron(total),u([1,end]),rmsMicron(totalTheory)*ones(1,2),u,rmsMicron(residue))
 grid
 legend('Full','Full (theory)','Residue',0)

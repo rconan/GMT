@@ -1,8 +1,8 @@
 %% GMT LTAO MODELING WITH OOMAO
 % Demonstrate how to build the GMT LTAO system
 
-forceSettings = false;
-filename  = '../mat/gmtSingleDmLtaoDownScaleSettings.mat';
+forceSettings = true;
+filename  = '../mat/gmtSingleDmLtaoDownScaleSettings1.mat';
 if exist(filename,'file') && ~forceSettings
     
     fprintf('   >>> LOAD SETTINGS FROM %s ....',upper(filename))
@@ -20,7 +20,7 @@ else
     
     %% Definition of the telescope
     nLenslet = 10;
-    nPx = nLenslet*30;
+    nPx = nLenslet*32;
     tel = telescope(5,...
         'obstructionRatio',0,...
         'fieldOfViewInArcMin',2.5,...
@@ -40,7 +40,7 @@ else
     ngs = source('wavelength',photometry.Na);
     
     %% Definition of the wavefront sensor
-    wfs = shackHartmann(nLenslet,nPx/2,0.85);
+    wfs = shackHartmann(nLenslet,nPx/8,0.85);
     wfs.lenslets.nyquistSampling = 0.5;
     wfs.lenslets.fieldStopSize = 30;
     ngs = ngs.*tel*wfs;
@@ -79,8 +79,8 @@ else
     dmTipTiltWfsCalib.nThresholded = 0;
     commandTipTilt = dmTipTiltWfsCalib.M;
     %%
-    lgs = source('asterism',{[6,arcsec(35),0]},'wavelength',photometry.Na,'height',90e3);
-    set(lgs,'objectiveFocalLength',90e3)
+    lgs = source('asterism',{[6,arcsec(35),0]},'wavelength',photometry.Na,'height',90e3/sqrt(5));
+    set(lgs,'objectiveFocalLength',90e3/sqrt(5));
     ltaoMmse = linearMMSE(dm.nActuator,tel.D,atm,lgs,ngs,'pupil',dm.validActuator,'unit',-9);
     %%
     bifLowRes = influenceFunction('monotonic',0.5);
@@ -99,6 +99,7 @@ else
     figure
     imagesc(tel)
     
+    %%
     fprintf('   >>> SAVING SETTINGS TO %s ....',upper(filename))
     save(filename)
     fprintf('\b\b\b\b!\n')
@@ -133,7 +134,7 @@ ylabel(colorbar,'WFE [\mum]')
 % Closed loop integrator gain:
 loopGain = 0.5;
 nIteration = 500;
-srcorma = sourceorama('../mat/gmtSingleDmLtaoDownScale1.h5',[ngs;lgs(:)],nIteration*tel.samplingTime,tel,0.25);
+srcorma = sourceorama('../mat/gmtSingleDmLtaoDownScale2.h5',[ngs;lgs(:)],nIteration*tel.samplingTime,tel,0.25);
 %%
 % closing the loop
 total  = zeros(1,nIteration);
@@ -145,8 +146,9 @@ for kIteration=1:nIteration
     % Propagation throught the atmosphere to the telescope, +tel means that
     % all the layers move of one step based on the sampling time and the
     % wind vectors of the layers
-    +srcorma;
-%     ngs=ngs.*+tel;
+%     +srcorma;
+    ngs=ngs.*+tel;
+    lgs = lgs.*tel;
     tt.resetPhase = ngs.opd*tt.waveNumber;
     % Saving the turbulence aberrated phase
     turbPhase = ngs.meanRmPhase;
