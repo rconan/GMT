@@ -23,7 +23,9 @@ classdef giantMagellanTelescope < telescopeAbstract
         tag = 'Giant Magellan Telescope';
         % the gmt segmented pupil
         pupil;
-        
+        % experiment duration
+        duration;
+        time = 0;
     end
     
     properties (Dependent)% , SetAccess = private)
@@ -48,6 +50,7 @@ classdef giantMagellanTelescope < telescopeAbstract
             p.addParamValue('fieldOfViewInArcmin', [], @isnumeric);
             p.addParamValue('resolution', [], @isnumeric);
             p.addParamValue('samplingTime', [], @isnumeric);
+            p.addParamValue('duration', [], @isnumeric);
             p.parse(varargin{:});
 
             % span diameter
@@ -58,6 +61,7 @@ classdef giantMagellanTelescope < telescopeAbstract
                 'fieldOfViewInArcmin',p.Results.fieldOfViewInArcmin,...
                 'samplingTime',p.Results.samplingTime,...
                 'resolution',p.Results.resolution);
+            obj.duration = p.Results.duration;
             setSegments(obj);
             display(obj);
         end
@@ -338,9 +342,70 @@ classdef giantMagellanTelescope < telescopeAbstract
             end
         end
         
+        function relay(obj,srcs)
+            %% RELAY Telescope to source relay
+            %
+            % relay(obj,srcs) writes the telescope amplitude and phase into
+            % the properties of the source object(s)
+           
+            nSrc = numel(srcs);
+            for kSrc=1:nSrc % Browse the srcs array
+                src = srcs(kSrc);
+                % Set mask and pupil first
+                src.mask      = obj.pupilLogical;
+                if isempty(src.nPhoton) || (isempty(obj.samplingTime) || isinf(obj.samplingTime))
+                    src.amplitude = obj.pupil;
+                else
+                    src.amplitude = obj.pupil.*sqrt(obj.samplingTime*src.nPhoton.*obj.area/sum(obj.pupil(:))); 
+                end
+                out = zeros(obj.resolution);
+                if ~isempty(obj.atm) % Set phase if an atmosphere is defined
+                    if obj.fieldOfView==0 && isNgs(src)
+                        out = out + sum(cat(3,obj.atm.layer.phase),3);
+                    else
+                        atm_m           = obj.atm;
+                        nLayer          = atm_m.nLayer;
+                        layers          = atm_m.layer;
+                        altitude_m      = [layers.altitude];
+                        sampler_m       = obj.sampler;
+                        phase_m         = { layers.phase };
+                        time_m          = obj.time;
+                        R_              = obj.R;
+                        layerSampling_m = obj.layerSampling;
+                        srcDirectionVector1 = src.directionVector(1);
+                        srcDirectionVector2 = src.directionVector(2);
+                        windVel = [layers.windSpeed];
+                        windDir = [layers.windDirection];
+                        vx = windVel.*cos(windDir);
+                        vy = windVel.*sin(windDir);
+                        srcHeight = src.height;
+                        out = zeros(size(src.amplitude,1),size(src.amplitude,2),nLayer);
+                        parfor kLayer = 1:nLayer
+                            height = altitude_m(kLayer);
+                            [xs,ys] = meshgrid(layerSampling_m{kLayer});
+                            layerR = R_*(1-height./srcHeight);
+                            u = sampler_m*layerR;
+                            xc = height.*srcDirectionVector1;
+                            yc = height.*srcDirectionVector2;
+                            xc = xc - time_m*vx(kLayer);
+                            yc = yc - time_m*vy(kLayer);
+                            [xi,yi] = meshgrid(u+xc,u+yc);
+                            out(:,:,kLayer) = linear(xs,ys,phase_m{kLayer},xi,yi);
+                        end
+                        out = sum(out,3);
+                    end
+                    out = (obj.phaseScreenWavelength/src.wavelength)*out; % Scale the phase according to the src wavelength
+                end
+                src.phase = fresnelPropagation(src,obj) + out/sqrt( cos( obj.elevation ) );
+                if isfinite(src.height);src.amplitude = 1./src.height;end
+                src.timeStamp = src.timeStamp + obj.samplingTime;
+                obj.time      = obj.time  + obj.samplingTime;
+            end
+        end
+        
     end
     
-    methods (Access=private)
+    methods (Access=protected)
         function setSegments(obj)
             obj.segmentCoordinate = [ 0 , giantMagellanTelescope.petalRingRadius.*exp(1i.*(pi.*(0:5)/3 + obj.p_angle)) ];
             obstructionRatio = [ giantMagellanTelescope.centralObscurationD ones(1,6)*giantMagellanTelescope.centerHoleD]/giantMagellanTelescope.segmentD;
@@ -360,5 +425,81 @@ classdef giantMagellanTelescope < telescopeAbstract
                 obj.pupil = obj.pupil + obj.segment{k}.pupil.*exp(1i.*obj.segment{k}.c);
             end
         end
+        
+        function obj = init(obj)
+            
+            obj.sampler = linspace(-1,1,obj.resolution);
+            do = obj.D/(obj.resolution-1);
+            
+            for kLayer=1:obj.atm.nLayer
+                durationSpan = 2*obj.duration.*obj.atm.layer(kLayer).windSpeed;
+                D_m = obj.D + 2*obj.atm.layer(kLayer).altitude.*tan(0.5*obj.fieldOfView) + durationSpan;
+                nPixel = 2*ceil(0.5*D_m./do);
+                obj.atm.layer(kLayer).D = D_m;
+                obj.atm.layer(kLayer).nPixel = nPixel;
+                obj.layerSampling{kLayer}  = D_m*0.5*linspace(-1,1,nPixel);
+                % ---------
+                fprintf('   Layer %d:\n',kLayer)
+                fprintf('            -> Computing initial phase screen (D=%3.2fm,n=%dpx) ...',D_m,nPixel)
+                m_atm = slab(obj.atm,kLayer);
+                obj.atm.layer(kLayer).phase = fourierSubHarmonicPhaseScreen(m_atm,D_m,nPixel);
+                fprintf('  Done \n')
+            end
+            obj.phaseScreenWavelength = obj.atm.wavelength;
+       end
+        
     end
+    
+end
+
+function F = linear(arg1,arg2,arg3,arg4,arg5)
+%LINEAR 2-D bilinear data interpolation.
+%   ZI = LINEAR(EXTRAPVAL,X,Y,Z,XI,YI) uses bilinear interpolation to
+%   find ZI, the values of the underlying 2-D function in Z at the points
+%   in matrices XI and YI.  Matrices X and Y specify the points at which
+%   the data Z is given.  X and Y can also be vectors specifying the
+%   abscissae for the matrix Z as for MESHGRID. In both cases, X
+%   and Y must be equally spaced and monotonic.
+%
+%   Values of EXTRAPVAL are returned in ZI for values of XI and YI that are
+%   outside of the range of X and Y.
+%
+%   If XI and YI are vectors, LINEAR returns vector ZI containing
+%   the interpolated values at the corresponding points (XI,YI).
+%
+%   ZI = LINEAR(EXTRAPVAL,Z,XI,YI) assumes X = 1:N and Y = 1:M, where
+%   [M,N] = SIZE(Z).
+%
+%   ZI = LINEAR(EXTRAPVAL,Z,NTIMES) returns the matrix Z expanded by
+%   interleaving bilinear interpolates between every element, working
+%   recursively for NTIMES. LINEAR(EXTRAPVAL,Z) is the same as
+%   LINEAR(EXTRAPVAL,Z,1).
+%
+%   See also INTERP2, CUBIC.
+
+[nrows,ncols] = size(arg3);
+%     mx = numel(arg1); my = numel(arg2);
+s = 1 + (arg4-arg1(1))/(arg1(end)-arg1(1))*(ncols-1);
+t = 1 + (arg5-arg2(1))/(arg2(end)-arg2(1))*(nrows-1);
+
+
+% Matrix element indexing
+ndx = floor(t)+floor(s-1)*nrows;
+
+% Compute intepolation parameters, check for boundary value.
+if isempty(s), d = s; else d = find(s==ncols); end
+s(:) = (s - floor(s));
+if ~isempty(d), s(d) = s(d)+1; ndx(d) = ndx(d)-nrows; end
+
+% Compute intepolation parameters, check for boundary value.
+if isempty(t), d = t; else d = find(t==nrows); end
+t(:) = (t - floor(t));
+if ~isempty(d), t(d) = t(d)+1; ndx(d) = ndx(d)-1; end
+
+% Now interpolate.
+onemt = 1-t;
+F =  ( arg3(ndx).*(onemt) + arg3(ndx+1).*t ).*(1-s) + ...
+    ( arg3(ndx+nrows).*(onemt) + arg3(ndx+(nrows+1)).*t ).*s;
+
+
 end
